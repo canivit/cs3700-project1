@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+
+import argparse
+import socket
+import ssl
+
+ap = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter)
+ap.add_argument('-p', '--port', type=int, help='tcp port (default non-tls port: 27993, default tls port: 27994)')
+ap.add_argument('-s', '--tls', action='store_true', default=False, help='use tls encrypted connection (if omitted, unencrypted connection will be used)')
+ap.add_argument('hostname', help='Host to connect')
+ap.add_argument('neu_id', help='NEU ID')
+args = ap.parse_args()
+
+port = args.port
+if port is None and args.tls:
+    port = 27994
+elif port is None and not args.tls:
+    port = 27993
+tls = args.tls
+hostname = args.hostname
+neu_id = args.neu_id
+
+client = None
+socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+if tls:
+    context = ssl.create_default_context()
+    client = context.wrap_socket(socket, server_hostname=hostname)
+else:
+    client = socket
+client.connect((hostname, port))
+
+helloMsg = 'ex_string HELLO ' + neu_id + '\n'
+sent = client.send(helloMsg.encode('ascii'))
+
+flagReceived = False
+while not flagReceived:
+    stringData = ''
+    while '\n' not in stringData:
+        chunk = client.recv(8192)
+        stringData = stringData + chunk.decode('ascii')
+
+    fields = stringData.split()
+    if 'BYE' == fields[1]:
+        client.close()
+        flagReceived = True
+        print(fields[2])
+    else:
+        count = fields[3].count(fields[2])
+        countMsg = 'ex_string COUNT ' + str(count) + '\n'
+        client.send(countMsg.encode('ascii'))
